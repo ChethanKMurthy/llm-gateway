@@ -4,6 +4,13 @@
 
 ![Gateway hero](docs/hero.gif)
 
+### ▶ Live demo — **[llm-gateway-w26g.onrender.com](https://llm-gateway-w26g.onrender.com)**  ·  [open the console →](https://llm-gateway-w26g.onrender.com/console)
+
+> It's on Render's free tier, so if it's been idle give the first request ~40 seconds to
+> wake up. The demo runs fully simulated (no API keys) and self-drives, so you land on a
+> live, moving dashboard.
+
+[![Live demo](https://img.shields.io/badge/live%20demo-online-2ea043)](https://llm-gateway-w26g.onrender.com)
 [![CI](https://github.com/ChethanKMurthy/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/ChethanKMurthy/llm-gateway/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-17%20passing-brightgreen)
@@ -37,8 +44,8 @@ move through nine stages before a single token gets billed.
 - **Stack.** Python · FastAPI · numpy. The dashboard is hand-written vanilla JS with
   **zero dependencies** — no CDN, no build step, charts drawn on `<canvas>`. Runs fully
   offline with simulated providers; drop in an API key and that provider goes live.
-- **Run it.** `make dev` → http://localhost:8000. Or deploy in one click — see
-  [Deploy](#deploying-a-live-demo).
+- **Try it.** Open the **[live demo](https://llm-gateway-w26g.onrender.com/console)**, or run
+  locally with `make dev` → http://localhost:8000.
 
 ---
 
@@ -48,7 +55,7 @@ move through nine stages before a single token gets billed.
 
 That's the console playground: one prompt, the whole pipeline, the real trace. A cache
 hit short-circuits and returns in about a millisecond; a miss gets classified, priced,
-routed, called, scored, and fed back into the router.
+routed, called, scored, and fed back into the router. **[Try it live →](https://llm-gateway-w26g.onrender.com/console)**
 
 ---
 
@@ -194,7 +201,7 @@ I'd rather show calibrated ranges than a single hero number.
 
 ## Observability
 
-![The live console](docs/console.png)
+![The live console, streaming](docs/dashboard.gif)
 
 The console is the real control plane, streamed over server-sent events: spend vs a
 frontier-only baseline, cache hit-rate by level, latency percentiles, the learned routing
@@ -295,15 +302,14 @@ goes live the moment a real key is present.
 
 ## Deploying a live demo
 
-It's one always-on container (it holds the SSE stream, in-memory metrics, and the bandit's
-learned state, so it's deliberately *not* serverless). The repo ships a `Dockerfile`,
-`render.yaml`, and a Hugging Face Space config. The short version:
+The instance above runs on **[Render](https://llm-gateway-w26g.onrender.com)** from the
+`render.yaml` Blueprint in this repo. It's one always-on container — it holds the SSE stream,
+in-memory metrics, and the bandit's learned state, so it's deliberately *not* serverless.
 
 ```bash
-make docker-build && make docker-run    # http://localhost:8000
+make docker-build && make docker-run    # run the exact image locally → http://localhost:8000
 ```
 
-Render reads `render.yaml` as a Blueprint (free tier); Hugging Face Spaces and Fly.io work
-from the same `Dockerfile`. Run the public demo **simulated, with no keys** — it's free,
-abuse-proof, and the routing/caching/security/cost logic is all still real. Full instructions
-in [DEPLOY.md](DEPLOY.md).
+The same `Dockerfile` deploys to Hugging Face Spaces or Fly.io. Run any public demo
+**simulated, with no keys** — it's free, abuse-proof, and the routing/caching/security/cost
+logic is all still real. Full instructions in [DEPLOY.md](DEPLOY.md).

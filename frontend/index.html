@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intelligent LLM Gateway — Control Plane</title>
+  <meta name="description" content="Multi-provider LLM gateway: semantic caching, dynamic routing, cost optimization, enterprise observability." />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23d98264'/><rect x='34' y='34' width='32' height='32' rx='6' fill='%230a0b0d'/></svg>" />
+</head>
+<body>
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Intelligent LLM Gateway</h1>
+        <div class="sub">semantic cache · dynamic routing · cost optimization · observability</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill" id="pill-mode"><span class="dot"></span><span id="mode-text">simulated fleet</span></div>
+    <div class="pill" id="pill-embed"><span class="dot" style="background:var(--sky)"></span><span id="embed-text">embedder</span></div>
+    <div class="pill" id="pill-conn"><span class="dot"></span><span id="conn-text">connecting…</span></div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- KPI row -->
+    <section class="kpis" id="kpis">
+      <div class="kpi accent-mint">
+        <div class="label">Saved vs Baseline</div>
+        <div class="value" id="k-saved">$0.00</div>
+        <div class="delta good" id="k-saved-pct">— %</div>
+      </div>
+      <div class="kpi accent-clay">
+        <div class="label">Real Spend</div>
+        <div class="value" id="k-spend">$0.00</div>
+        <div class="delta" id="k-baseline">baseline $0.00</div>
+      </div>
+      <div class="kpi accent-gold">
+        <div class="label">Cache Hit-Rate</div>
+        <div class="value" id="k-hitrate">0%</div>
+        <div class="delta" id="k-hits">L1 0 · L2 0</div>
+      </div>
+      <div class="kpi accent-sky">
+        <div class="label">Latency p95</div>
+        <div class="value" id="k-p95">0<span style="font-size:14px">ms</span></div>
+        <div class="delta" id="k-latency">p50 0 · p99 0</div>
+      </div>
+      <div class="kpi accent-violet">
+        <div class="label">Requests</div>
+        <div class="value" id="k-requests">0</div>
+        <div class="delta" id="k-rps">0 req/s</div>
+      </div>
+      <div class="kpi accent-clay">
+        <div class="label">Proj. Monthly</div>
+        <div class="value" id="k-monthly">$0</div>
+        <div class="delta" id="k-monthly-base">vs $0 baseline</div>
+      </div>
+    </section>
+
+    <!-- playground + live feed -->
+    <div class="section-label">interactive playground &nbsp;·&nbsp; watch a request flow through the gateway</div>
+    <div class="grid-2-1">
+      <div class="card">
+        <div class="hd"><h3>Playground</h3><span class="tag">POST /v1/complete</span>
+          <div class="spacer" style="flex:1"></div>
+          <span class="tag" id="pg-hint">type a prompt, or pick an example ↓</span>
+        </div>
+        <div class="bd">
+          <div class="pg-input">
+            <textarea id="pg-prompt" placeholder="e.g. Write a Python function to debounce an async call…"></textarea>
+          </div>
+          <div class="pg-controls">
+            <button class="btn primary" id="pg-run">▶ Run through gateway</button>
+            <select class="ctl" id="pg-model">
+              <option value="">auto-route (recommended)</option>
+            </select>
+            <label class="toggle"><input type="checkbox" id="pg-cache" checked /> cache</label>
+            <label class="toggle"><input type="checkbox" id="pg-opt" checked /> optimize</label>
+          </div>
+          <div class="chips" id="pg-chips"></div>
+
+          <!-- pipeline -->
+          <div class="pipeline" id="pipeline"></div>
+
+          <!-- result -->
+          <div class="result" id="pg-result">
+            <div class="meta" id="pg-meta"></div>
+            <div class="text" id="pg-text"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h3>Live Request Feed</h3><span class="tag">SSE /api/stream</span></div>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
+
+    <!-- charts -->
+    <div class="section-label">real-time analytics</div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="hd"><h3>Spend vs Baseline</h3><span class="tag">USD / sec</span></div>
+        <div class="bd">
+          <canvas id="chart-cost" height="150"></canvas>
+          <div class="legend">
+            <span><i style="background:var(--clay)"></i> gateway spend</span>
+            <span><i style="background:var(--ink-3)"></i> baseline (frontier-only)</span>
+            <span><i style="background:var(--mint)"></i> saved</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Where Requests Are Served</h3><span class="tag">composition</span></div>
+        <div class="bd">
+          <canvas id="chart-cache" height="150"></canvas>
+          <div class="legend">
+            <span><i style="background:var(--gold)"></i> L1 exact</span>
+            <span><i style="background:var(--violet)"></i> L2 semantic</span>
+            <span><i style="background:var(--sky)"></i> model call</span>
+            <span><i style="background:var(--rose)"></i> blocked</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Latency Distribution</h3><span class="tag">p50 / p95 / p99</span></div>
+        <div class="bd">
+          <canvas id="chart-latency" height="150"></canvas>
+          <div class="legend"><span class="muted" id="lat-note">cache hits return in ~1ms; model calls dominate the tail</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- router + providers -->
+    <div class="section-label">routing intelligence &amp; reliability</div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="hd"><h3>RL Router — Learned Policy</h3><span class="tag">Thompson-sampling bandit</span>
+          <div class="spacer" style="flex:1"></div><span class="tag" id="router-stats">—</span>
+        </div>
+        <div class="bd"><div class="policy" id="policy"></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Provider Health</h3><span class="tag">circuit breaker · click to fail a provider</span></div>
+        <div class="bd"><div class="providers" id="providers"></div></div>
+      </div>
+    </div>
+
+    <!-- breakdowns -->
+    <div class="section-label">cost attribution</div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="hd"><h3>Spend by Model</h3><span class="tag">USD</span></div>
+        <div class="bd"><div class="bars" id="by-model"></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Requests by Intent</h3><span class="tag">classifier</span></div>
+        <div class="bd"><div class="bars" id="by-intent"></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Savings by Team</h3><span class="tag">showback</span></div>
+        <div class="bd"><div class="bars" id="by-team"></div></div>
+      </div>
+    </div>
+
+    <!-- catalog -->
+    <div class="section-label">model catalog &amp; pricing</div>
+    <div class="card">
+      <div class="bd" style="padding:0">
+        <table class="cat" id="catalog">
+          <thead><tr>
+            <th>Model</th><th>Provider</th><th>Tier</th>
+            <th>$/1M in</th><th>$/1M out</th><th>Quality prior</th><th>Strong at</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="foot">
+      Built from the PRD/TRD · <span class="mono">FastAPI + numpy</span> backend · zero-dependency dashboard ·
+      <a href="/docs">API docs</a> · <span id="foot-mode"></span>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

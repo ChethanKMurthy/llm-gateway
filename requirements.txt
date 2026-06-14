@@ -1,0 +1,9 @@
+# Core — the whole gateway runs on just these four.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+numpy>=1.26
+httpx>=0.27
+
+# Optional upgrade: install to swap the default feature-hashing embedder for a
+# real sentence-transformer (MiniLM). The gateway auto-detects and uses it.
+# sentence-transformers>=3.0

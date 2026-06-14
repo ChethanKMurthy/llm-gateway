@@ -1,0 +1,18 @@
+# One-click deploy on Render (https://render.com).
+# Push this repo to GitHub, then: New + → Blueprint → pick the repo.
+# Free tier is perfect for a recruiter demo (it cold-starts after idle ~50s).
+services:
+  - type: web
+    name: llm-gateway
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GATEWAY_AUTODEMO          # self-driving demo traffic
+        value: "1"
+      - key: GATEWAY_SIM_LATENCY_SCALE
+        value: "0.12"
+      # Public demo runs fully simulated (no keys) — safe & free.
+      # To make a provider live, add its key here as a *secret* (e.g. GROQ_API_KEY)
+      # — but don't do that on a public URL unless you've set rate limits.

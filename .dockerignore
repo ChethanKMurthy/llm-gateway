@@ -9,3 +9,8 @@ __pycache__/
 ~$*
 *.docx
 /tmp/
+docs/
+tests/
+.github/
+PRODUCT.md
+DESIGN.md

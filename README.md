@@ -1,234 +1,309 @@
-<div align="center">
+# Gateway
 
-# Intelligent Multi-Provider LLM Gateway
+**An intelligent control plane for LLM calls — semantic caching, model routing, cost control, and observability in a single hop.**
 
-**Semantic caching · dynamic routing · cost optimization · enterprise observability**
+![Gateway hero](docs/hero.gif)
 
-A production-shaped control plane that sits between your application and every
-LLM provider, and makes each request *cheaper, faster, safer, and observable* —
-with a live dashboard that shows it happening in real time.
+[![CI](https://github.com/ChethanKMurthy/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/ChethanKMurthy/llm-gateway/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![Tests](https://img.shields.io/badge/tests-17%20passing-brightgreen)
+![Dependencies](https://img.shields.io/badge/frontend%20deps-0-orange)
 
-`FastAPI + numpy` backend · zero-dependency dashboard · runs offline on any laptop
+Most teams send every prompt to one big model and pay for it twice — once because the
+model is overkill for the task, and again because they re-answer questions they already
+answered an hour ago. Gateway is the layer that fixes both, plus the unglamorous stuff
+that actually breaks in production: guardrails, failover, and metrics you can act on.
 
-</div>
-
----
-
-## Why this exists
-
-Most "LLM caching" projects stop at *"embed the prompt, check cosine similarity,
-return on a hit."* That solves duplicate requests. It does not solve what real AI
-platform teams actually fight: **cost, latency, reliability, model selection,
-governance, and observability** — all at once.
-
-This project is the next thing up: an **intelligent gateway**. Every request flows
-through a nine-stage pipeline before (and instead of) hitting a model:
-
-```
-client → [ security → classify → optimize → cache → predict → route → call → quality → learn ] → provider
-```
-
-Each stage is a real, inspectable component — and the dashboard animates the whole
-pipeline for any prompt you type.
-
-This implements the full PRD/TRD vision (all 15 features below), grounded in a
-research pass on the 2026 provider landscape (Portkey, LiteLLM, GPTCache, RouteLLM,
-vCache) and current pricing.
+It's a running system, not a slide deck. Type a prompt into the console and watch it
+move through nine stages before a single token gets billed.
 
 ---
 
-## Quickstart
+## TL;DR
+
+- **What it is.** A multi-provider LLM gateway — one endpoint in front of Anthropic,
+  OpenAI, Groq, Google, xAI, and local Ollama.
+- **What it does, per request.** Classify the intent → check two layers of cache →
+  predict the cost → route to the model that's genuinely best for *that* task → call it
+  with automatic failover → score the answer → learn from it. Every step is logged into
+  a trace you can read.
+- **Why it's more than a cache.** The router is a Thompson-sampling bandit that learns
+  the best model per task type from live reward. The cache does real embedding-based
+  semantic matching with thresholds that tune themselves. Everything is exposed as
+  Prometheus metrics and a live console.
+- **Numbers (demo traffic).** ~75–90% of requests served from cache or a cheaper model;
+  p50 for a cache hit is ~1 ms versus seconds for a model call. Real mixed traffic lands
+  closer to 20–45% — I'm explicit about that below.
+- **Stack.** Python · FastAPI · numpy. The dashboard is hand-written vanilla JS with
+  **zero dependencies** — no CDN, no build step, charts drawn on `<canvas>`. Runs fully
+  offline with simulated providers; drop in an API key and that provider goes live.
+- **Run it.** `make dev` → http://localhost:8000. Or deploy in one click — see
+  [Deploy](#deploying-a-live-demo).
+
+---
+
+## See it work
+
+![Playground running a request](docs/playground.gif)
+
+That's the console playground: one prompt, the whole pipeline, the real trace. A cache
+hit short-circuits and returns in about a millisecond; a miss gets classified, priced,
+routed, called, scored, and fed back into the router.
+
+---
+
+## Why I built it
+
+I kept seeing the same shape of waste. A translation, an FAQ lookup, and a genuinely hard
+reasoning task would all get fired at the most expensive frontier model, billed at the top
+rate, and — for anything repetitive — re-answered from scratch every time. Meanwhile the
+operational basics were missing: when a provider had a bad five minutes, the whole feature
+went down with it, and nobody could tell you what any of it cost until the invoice landed.
+
+A "semantic cache" solves part of that. But the interesting version is the whole control
+plane around the cache: routing, cost prediction, guardrails, failover, and observability,
+all in one place. So that's what this is.
+
+---
+
+## How it works
+
+Every request runs the same nine-stage pipeline. The console animates it live; here's the
+same thing on the landing page:
+
+![The nine-stage pipeline](docs/pipeline.gif)
+
+```
+client ──▶ │ security │ classify │ optimize │ cache │ predict │ route │ call │ quality │ learn │ ──▶ provider
+                                                 │
+                                            (hit ⇒ return ~1 ms)
+```
+
+### 1 · Security (`gateway/security.py`)
+Runs before anything leaves the building. It scores prompt-injection / jailbreak attempts
+and hard-blocks anything above a threshold, redacts PII (emails, phones, SSNs, cards) in
+place, and refuses to forward leaked secrets — API keys, AWS keys, private keys, including
+the modern formats (`sk-proj-…`, `gsk_…`, `xai-…`, Google `AIza…`). The point is that a
+careless prompt can't exfiltrate a credential to a third-party provider.
+
+### 2 · Classification (`gateway/classifier.py`)
+Maps the prompt to one of nine intents (code, math, reasoning, translation, summarization,
+RAG, QA, chat, classification). It's nearest-centroid classification — I embed a set of
+prototype phrases per intent once, average them into a centroid, and score each prompt by
+cosine similarity — plus a handful of high-precision lexical signals (a code fence, a
+"translate to French", a math operator). The intent decides two things downstream: which
+models are even candidates, and how strict the cache should be.
+
+### 3 · Token optimization (`gateway/optimizer.py`)
+A conservative, lossless-ish rewrite: collapse whitespace, strip filler ("please could you
+kindly just…"), de-duplicate repeated instructions — but never touch anything inside a code
+fence. It reports the realized token savings, which the cost engine credits.
+
+### 4 · The multi-level cache (`gateway/cache.py`) — the part I'm most happy with
+Two layers, checked cheapest first:
+
+- **L1 — exact.** A hash of the normalized prompt + intent. O(1), ~0.1 ms. Catches the
+  byte-identical repeats.
+- **L2 — semantic.** The prompt is embedded and compared by cosine similarity against every
+  stored entry. A hit means *"someone asked an equivalent question before."* The whole store
+  is a single numpy matrix, so a lookup is one vectorized dot product — fast to tens of
+  thousands of entries with no vector database, and trivially swappable for Qdrant or
+  Redis-Vector later.
+
+Two design choices worth calling out:
+
+- **Thresholds are per-intent and adaptive.** Translation and code have to be near-exact
+  (a one-word change matters); FAQ-style chat can be loose. Each intent starts at a sensible
+  threshold and then *self-tunes*: if a semantic hit later scores as low-quality, that
+  intent gets stricter. This is the "cache learning" idea — a simple, stable controller
+  instead of a single magic number.
+- **Search is global, gated by the matched entry's threshold.** Similarity is itself the
+  safety rail (two unrelated prompts have ~0 cosine), so searching the whole store makes the
+  cache robust to the classifier occasionally disagreeing with itself between paraphrases.
+
+> The default embedder is a dependency-free feature-hashing vectorizer (the same trick as
+> scikit-learn's `HashingVectorizer`). It captures lexical and near-paraphrase similarity
+> well and is deterministic across processes. Its honest limitation is negation — *"open a
+> file"* vs *"close a file"* land close — which is the known failure mode of lexical
+> embeddings. Install `sentence-transformers` and it auto-upgrades to MiniLM; retune the
+> thresholds upward.
+
+### 5 · Cost & latency prediction (`gateway/cost.py`)
+Before any call, for every candidate model: estimated input/output tokens, dollar cost
+against a real 2026 price table, and a latency distribution (p50/p95/p99) modelled as
+log-normal — the right-skewed shape real inference latency actually takes. This is what the
+router optimizes against, and what the dashboard projects into a monthly bill.
+
+### 6 · Routing — a bandit that learns (`gateway/router.py`)
+This is the bit that makes it a *platform* and not a lookup table. Routing is a **contextual
+bandit**:
+
+- **context** = the request's intent → its candidate model set
+- **arms** = those candidate models
+- **reward** = `w_q·quality − w_c·cost − w_l·latency`, computed *after* the call
+
+Action selection is **Thompson sampling** over a running estimate of each arm's mean reward.
+Each arm is seeded with an informed prior (its quality prior minus an expected cost/latency
+penalty) so day-one routing is already sensible — then the posterior sharpens toward
+whatever actually performs on the traffic it sees. It needs no offline training set, it's
+honest about exploration, and the learned policy (best model per intent, with confidence) is
+exposed in the console. Knock a provider offline and unavailable arms are filtered out before
+sampling — so the same machinery gives you health-aware failover for free.
+
+### 7 · Call + failover (`gateway/providers.py`)
+A `Provider` turns (model, prompt) into a response with token accounting and latency. Two
+worlds behind one interface: real adapters (Anthropic / OpenAI / Groq / Google / Ollama over
+`httpx`) used automatically for any provider that has a key in the environment, and a
+faithful simulator used otherwise. A **circuit breaker** tracks per-provider health; after
+consecutive failures it opens and the request walks a fallback chain until something answers.
+
+### 8 · Quality scoring (`gateway/quality.py`)
+Every response gets a cheap, model-free score in [0, 1]: relevance (prompt↔response cosine),
+completeness (length appropriate for the intent), a hallucination-risk heuristic (hedging,
+fabricated-citation patterns, degenerate repetition), and format fit. It feeds the router's
+reward and the cache's threshold controller.
+
+### 9 · Learn
+The reward updates the bandit, the response is written to both cache layers, the intent's
+threshold is nudged, and a span-shaped event is emitted to the metrics layer. The system is
+a little smarter for the next request.
+
+---
+
+## What's real vs simulated
+
+I'd want to know this if I were reviewing it, so here it is plainly.
+
+**Real, and running on every request:** the embeddings and semantic search, the classifier,
+the multi-level cache and its adaptive thresholds, the Thompson-sampling bandit, the circuit
+breaker and failover, the cost/latency math against a real price table, and the security
+guardrails.
+
+**Simulated by default:** the **LLM responses themselves**. With no API key the simulator
+returns realistic latency, token counts, intent-aware content, and the occasional failure —
+so the whole system runs offline with zero credentials. Set `ANTHROPIC_API_KEY`,
+`GROQ_API_KEY`, etc. and that provider makes live calls instead; the rest stay simulated.
+
+**On the numbers:** the bundled demo traffic is intentionally cache-friendly (a Zipfian
+popularity curve plus paraphrases), which is why it shows a 75–90% hit-rate. Real mixed
+production traffic is more like **20–45%** — higher for classification and FAQ, lower for
+RAG and open chat. Routing savings of 50–70% are well supported by RouteLLM-class results.
+I'd rather show calibrated ranges than a single hero number.
+
+---
+
+## Observability
+
+![The live console](docs/console.png)
+
+The console is the real control plane, streamed over server-sent events: spend vs a
+frontier-only baseline, cache hit-rate by level, latency percentiles, the learned routing
+policy, provider health, and cost attribution by model / intent / team. For machines there's
+a Prometheus endpoint:
 
 ```bash
-./run.sh demo
+curl localhost:8000/metrics
+# gateway_requests_total 1240
+# gateway_cache_hits_total{level="l1"} 612
+# gateway_saved_usd_total 1.83
+# gateway_latency_milliseconds{quantile="0.95"} 412.7
+# gateway_provider_up{provider="groq"} 1
 ```
 
-That sets up a virtualenv, starts the gateway on **http://127.0.0.1:8000**, and
-streams realistic traffic so the dashboard is alive immediately. Open the URL.
+Plus `/health` (liveness) and `/ready` (readiness) for container orchestrators.
 
-Other entry points:
+---
+
+## Running it
 
 ```bash
-./run.sh                 # just serve (empty dashboard you can drive by hand)
-./run.sh traffic         # send traffic to an already-running server
-python -m scripts.traffic --inproc --n 300 --outage   # no server, drive the engine directly
+make install      # venv + dependencies (FastAPI, uvicorn, numpy, httpx)
+make dev          # serve on :8000 with self-driving demo traffic
+# open http://localhost:8000   → landing
+#      http://localhost:8000/console → the live dashboard
 ```
 
-**No API keys required.** Every provider falls back to a faithful simulator, so
-the entire system — routing, caching, failover, dashboards — runs end-to-end
-offline. Drop in a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) and *that*
-provider switches to live calls automatically; everything else stays simulated.
-
----
-
-## The dashboard
-
-A single, dependency-free page (no CDN, no build step) that talks to the gateway:
-
-- **Headline KPIs** — real spend vs frontier-only baseline, $ saved, cache
-  hit-rate, p95 latency, requests, projected monthly bill.
-- **Interactive playground** — type a prompt and watch it flow through all nine
-  stages, each lighting up with its real trace (intent, cache decision, routing
-  rationale, cost, quality). Toggle caching/optimization, or force a model.
-- **Live request feed** — every request streamed over Server-Sent Events.
-- **Real-time charts** — spend-vs-baseline area, cache-composition donut, latency
-  p50/p95/p99 (all hand-rolled on `<canvas>`).
-- **RL router policy** — the learned best model per intent, with each arm's
-  expected reward and pull count, updating as traffic flows.
-- **Provider health** — circuit-breaker status + per-provider percentiles. Click
-  **fail** on any provider to trigger live failover and watch the router reroute.
-- **Cost attribution** — spend by model, requests by intent, savings by team.
-
----
-
-## Architecture
-
-```
-                         ┌──────────────────────────────────────────────┐
-   client  ──POST──▶     │                  Gateway                      │
-                         │                                              │
-                         │  1 Security    secrets/injection/PII guard   │
-                         │  2 Classify    intent → candidates + thresh  │
-                         │  3 Optimize    strip dead tokens             │
-                         │  4 Cache       L1 exact → L2 semantic        │──hit──▶ return
-                         │  5 Predict     per-model cost + p50/95/99    │
-                         │  6 Route       Thompson-sampling bandit      │
-                         │  7 Call        + health-aware smart fallback │──▶ Anthropic / OpenAI / Groq
-                         │  8 Quality     relevance/halluc/format score │     xAI / Google / Ollama
-                         │  9 Learn       reward → router; adapt cache  │     (live or simulated)
-                         │                                              │
-                         └───────────────┬──────────────────────────────┘
-                                         │ events
-                                         ▼
-                         Metrics ──SSE──▶ Dashboard (spend, savings, latency, policy…)
-```
-
-Every module is independently swappable behind a clean interface:
-
-| File | Responsibility |
-|------|----------------|
-| `gateway/gateway.py` | orchestrator — runs the pipeline, emits the trace |
-| `gateway/embeddings.py` | feature-hashing embedder (+ auto MiniLM upgrade) |
-| `gateway/classifier.py` | nearest-centroid intent classifier + lexical boosts |
-| `gateway/cache.py` | L1/L2/L3 cache + adaptive per-intent thresholds |
-| `gateway/router.py` | contextual bandit (Thompson sampling) + learned policy |
-| `gateway/cost.py` | token estimation, cost + latency (log-normal) prediction |
-| `gateway/security.py` | injection/jailbreak scoring, PII redaction, secret blocking |
-| `gateway/optimizer.py` | conservative token/prompt compression |
-| `gateway/quality.py` | model-free response quality scoring |
-| `gateway/providers.py` | real adapters + simulator + circuit breaker |
-| `gateway/metrics.py` | percentiles, time-series, breakdowns, SSE pub/sub |
-| `gateway/app.py` | FastAPI surface + dashboard host |
-
----
-
-## How the PRD/TRD maps to code
-
-| # | PRD Feature | Where | Status |
-|---|-------------|-------|--------|
-| 1 | Dynamic model routing | `router.py` | ✅ contextual bandit over per-intent candidates |
-| 2 | Multi-level cache (L1/L2/L3) | `cache.py` | ✅ exact hash → semantic cosine → answer cache |
-| 3 | Prompt classification engine | `classifier.py` | ✅ nearest-centroid + lexical, full distribution |
-| 4 | Cost prediction engine | `cost.py` | ✅ per-model $ before execution |
-| 5 | Latency prediction (P50/95/99) | `cost.py`, `metrics.py` | ✅ log-normal model + measured percentiles |
-| 6 | Smart fallback | `gateway.py`, `providers.py` | ✅ health-aware candidate chain |
-| 7 | Prompt fingerprinting | `cache.py`, `metrics.py` | ✅ hash + embedding + intent + cost stored |
-| 8 | Cache learning system | `cache.py` | ✅ adaptive per-intent thresholds |
-| 9 | Response quality scoring | `quality.py` | ✅ relevance/completeness/halluc/format |
-| 10 | Real-time cost dashboard | `frontend/` | ✅ spend/savings/team/model/projection |
-| 11 | Prompt security layer | `security.py` | ✅ injection, PII redaction, secret block |
-| 12 | Token optimization | `optimizer.py` | ✅ lossless-ish compression with realized savings |
-| 13 | Streaming/replay cache | `cache.py` | ◑ responses cached & replayed (not chunk-level streaming) |
-| 14 | OpenTelemetry-style observability | `metrics.py` | ✅ span-shaped events, SSE pipeline (in-memory) |
-| 15 | Reinforcement-learning router | `router.py` | ✅ Thompson-sampling bandit, learns optimal arm per intent |
-
----
-
-## What's real vs simulated (read this)
-
-Senior reviewers care about this distinction, so it's stated plainly:
-
-**Real algorithms, running for every request:**
-- feature-hashing embeddings + cosine semantic search (the same technique as
-  scikit-learn's `HashingVectorizer`)
-- nearest-centroid intent classification
-- multi-level cache with LRU eviction and adaptive thresholds
-- a genuine Thompson-sampling contextual bandit that learns from reward feedback
-- circuit breaker, health-aware fallback, percentile latency tracking
-- token-count and cost math against the **real 2026 price table** (`config.py`)
-- the security regex/heuristic guardrails
-
-**Simulated by default (swappable for real with one env var):**
-- the **LLM responses themselves**. With no API key, `providers.py` returns a
-  faithful simulator — realistic latency (log-normal), token counts, intent-aware
-  content, and occasional failures — so the gateway runs offline. Set
-  `ANTHROPIC_API_KEY` etc. and that provider makes live calls instead.
-- the default **embedder** is lexical feature-hashing (zero dependencies). Its
-  cosine scale is compressed vs a neural embedder, and it can't resolve negation
-  (`open` vs `close a file` ≈ 0.77) — the known failure mode of lexical
-  embeddings. `pip install sentence-transformers` and the gateway auto-upgrades
-  to MiniLM; retune thresholds upward toward 0.9–0.98.
-
-**Demo numbers honesty:** the bundled traffic is intentionally cache-friendly
-(Zipfian popularity + paraphrases), so it shows ~75–86% hit-rate. Real mixed
-production traffic is more like **20–45%** (classification/FAQ higher, RAG/chat
-lower). Routing savings of **50–70%** are well-supported by RouteLLM-class results;
-the headline "~95% cheaper than frontier-only" combines caching *and* routing on
-favorable traffic — directional, not a guarantee.
-
----
-
-## API
+No keys needed. To make a provider live, add its key to a `.env` (gitignored) and restart:
 
 ```bash
-# route a request through the gateway (returns the response + full 9-step trace)
-curl -X POST localhost:8000/v1/complete \
-  -H 'content-type: application/json' \
-  -d '{"prompt":"Write a python function to reverse a linked list","team":"search"}'
+echo 'GROQ_API_KEY=gsk_...' >> .env
+make serve
 ```
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /v1/complete` | main gateway call (response + trace) |
-| `GET /api/summary` | headline metrics |
-| `GET /api/breakdowns` | by provider / model / intent / team / user |
-| `GET /api/providers` | health, mode, per-provider percentiles |
-| `GET /api/policy` | the RL router's learned policy |
-| `GET /api/cache` | cache stats + adaptive thresholds |
-| `GET /api/models` | model catalog + pricing |
-| `GET /api/recent` · `/api/timeseries` | feed + charts data |
-| `GET /api/stream` | SSE: one event per request |
-| `POST /api/outage?provider=openai&on=true` | force an outage to demo failover |
-| `GET /docs` | interactive OpenAPI docs |
+Drive traffic at a running server, with a simulated provider outage halfway through to show
+failover:
+
+```bash
+make traffic
+```
 
 ---
 
-## Design choices a reviewer might ask about
+## Tests & CI
 
-- **Why a bandit, not a trained router?** A contextual bandit needs no offline
-  training set, learns online from real reward, and is honest about exploration.
-  Arms are seeded with informed priors (quality − expected cost/latency) so day-one
-  routing is already sensible, then the posterior sharpens to *your* traffic.
-- **Why global semantic search, not intent-scoped?** Similarity is itself the
-  safety gate (cross-topic prompts have ~0 cosine), so searching the whole store
-  makes the cache robust to classifier drift while per-content thresholds keep
-  strict types (code, translation) strict.
-- **Why no vector DB?** The L2 store is a single numpy matrix — one vectorized dot
-  product per lookup, fast to tens of thousands of entries, and trivially swapped
-  for Qdrant/Redis-Vector. Right altitude for the problem.
-- **Why hand-rolled charts?** Zero CDN means the dashboard renders with no network
-  — important for a live demo on conference wifi.
+```bash
+make test    # 17 tests: caching, routing, guardrails, cost, classification, failover
+```
+
+CI runs on every push: the suite on Python 3.12 and 3.13, then a Docker build that boots the
+container and smoke-tests `/health`, `/ready`, and `/metrics`. (Writing these caught a real
+bug — the secret detector was missing modern `sk-proj-`/`gsk_` key formats.)
 
 ---
 
 ## Project layout
 
 ```
-gateway/          backend package (one file per concern)
-frontend/         index.html · styles.css · app.js  (no build step)
-scripts/traffic.py  realistic demo traffic generator
-run.sh            one-command setup + serve + demo
-requirements.txt  fastapi · uvicorn · numpy · httpx
+gateway/            the backend — one file per concern
+  gateway.py        orchestrator: runs the pipeline, builds the trace
+  classifier.py     intent classification
+  cache.py          L1 exact + L2 semantic cache, adaptive thresholds
+  router.py         Thompson-sampling contextual bandit
+  cost.py           token / cost / latency prediction
+  security.py       injection scoring, PII redaction, secret blocking
+  optimizer.py      token compression
+  quality.py        response quality scoring
+  providers.py      real adapters + simulator + circuit breaker
+  metrics.py        percentiles, time-series, SSE, Prometheus
+  config.py         model catalog, pricing, routing policy, thresholds
+frontend/           landing + about + console (vanilla JS, no build)
+tests/              pytest suite
+scripts/traffic.py  realistic traffic generator
 ```
 
-Built from the PRD/TRD as a complete, runnable product.
+---
+
+## A few decisions, if you're curious
+
+**Why a bandit instead of a trained router?** No offline dataset required, it adapts to your
+traffic online, and it's honest about exploration. Informed priors mean it's useful on day
+one rather than after a training run.
+
+**Why no vector DB?** At this scale a numpy matrix and one dot product per lookup is faster
+than the network hop to a vector service, and the interface is a clean seam to swap in Qdrant
+or Redis-Vector when the working set outgrows memory. Right tool for the size.
+
+**Why hand-rolled charts and zero frontend dependencies?** A page about fast, efficient
+infrastructure should itself be fast — and it means the console renders with no network at
+all, which matters when you're demoing on conference wifi.
+
+**Why ship a simulator at all?** So the entire system — routing, caching, failover, the whole
+dashboard — runs end-to-end on any laptop with no credentials, while the exact same code path
+goes live the moment a real key is present.
+
+---
+
+## Deploying a live demo
+
+It's one always-on container (it holds the SSE stream, in-memory metrics, and the bandit's
+learned state, so it's deliberately *not* serverless). The repo ships a `Dockerfile`,
+`render.yaml`, and a Hugging Face Space config. The short version:
+
+```bash
+make docker-build && make docker-run    # http://localhost:8000
+```
+
+Render reads `render.yaml` as a Blueprint (free tier); Hugging Face Spaces and Fly.io work
+from the same `Dockerfile`. Run the public demo **simulated, with no keys** — it's free,
+abuse-proof, and the routing/caching/security/cost logic is all still real. Full instructions
+in [DEPLOY.md](DEPLOY.md).

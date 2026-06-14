@@ -1,97 +1,95 @@
-# Deploying the gateway (recruiter-facing demo)
+# Deploying a live demo link
 
-The app is a single always-on container (FastAPI + a server-sent-events stream +
-in-memory metrics). It needs **one persistent process** — not serverless — so use a
-container host. With `GATEWAY_AUTODEMO=1` the dashboard **self-drives**: visitors
-land on a live, moving demo with zero interaction.
+The gateway is **one always-on container** (FastAPI + an SSE stream + in-memory
+metrics). It is *not* serverless — it needs one persistent process — so deploy it
+to a container host. With `GATEWAY_AUTODEMO=1` (the Dockerfile default) the
+dashboard **self-drives**: a visitor lands on a live, moving demo with no input.
 
-> **Run the public demo fully simulated (no API keys).** It's free, abuse-proof,
-> and always works. Never put your Groq/Anthropic key on a public URL — anyone
-> could drain it. The Dockerfile defaults to simulated + autodemo already.
+> Run the public demo **fully simulated — no API keys**. It's free, abuse-proof,
+> and the routing/caching/security/cost logic is all still real. Never put a Groq/
+> Anthropic key on a public URL; anyone could drain it.
 
-The repo ships ready to deploy: `Dockerfile`, `.dockerignore` (keeps `.env` out of
-the image), and `render.yaml`. `.env` is gitignored, so your key never leaves your
-laptop.
+`.env` is gitignored, so your key never leaves your laptop.
 
 ---
 
-## Option A — Render (simplest, free) ⭐ recommended
+## The MLOps story this deployment tells
 
-1. Push this repo to GitHub (see "First push" below).
-2. Go to **dashboard.render.com → New + → Blueprint**, pick the repo.
-   Render reads `render.yaml` and provisions a free Docker web service.
-3. Wait ~3 min for the build. You get a URL like
-   `https://llm-gateway-xxxx.onrender.com`. Share it.
+The point isn't just "it's online" — it's that the repo is shaped like something a
+platform team would actually run. Point a reviewer at:
 
-Free instances sleep after ~15 min idle and cold-start in ~50s — fine for a demo.
-For an always-warm instance, bump the plan to Starter ($7/mo).
+| Signal | Where |
+|---|---|
+| **Containerized**, non-root, layer-cached | `Dockerfile` (+ `HEALTHCHECK`) |
+| **CI/CD gate** — test → build → smoke-test the image | `.github/workflows/ci.yml` |
+| **Test suite** — caching, routing, guardrails, failover | `tests/` (`pytest -q`) |
+| **Liveness / readiness probes** | `GET /health`, `GET /ready` |
+| **Prometheus metrics** for scrape → Grafana/alerting | `GET /metrics` |
+| **Infrastructure as code** | `render.yaml`, `Makefile` |
+| **12-factor config** (env-driven, `$PORT`, no baked secrets) | `Dockerfile`, `.env.example` |
+| **Reliability**: circuit breaker, health-aware failover | `providers.py` |
+| **Observability of the model layer**: cost/latency/quality per request, learned routing policy | the console |
+
+That last row is the ML-specific part: it's not just app metrics, it's **LLM cost,
+latency percentiles, cache hit-rate, response-quality scoring, and a routing policy
+that learns** — the things an *LLMOps* team has to watch but usually can't see.
+
+---
+
+## Best free options (ranked for this project)
+
+### 1. Hugging Face Spaces (Docker) — best for an AI/ML audience ⭐
+Free, **persistent** (no idle spin-down), and ML-native — deploying here is itself
+an MLOps signal that AI companies recognize. Steps:
+
+1. Push this repo to GitHub (below), or upload files directly to the Space.
+2. Create a **Space** → SDK **Docker** → name it.
+3. Make the Space's `README.md` the contents of **`hf-space-README.md`** (its
+   front-matter sets `sdk: docker`, `app_port: 8000`). Add the rest of the repo.
+4. HF builds the `Dockerfile` and serves at `https://<you>-llm-gateway.hf.space`.
+
+Optional: add a provider key as a **Space secret** only if you accept the rate-limit/cost risk.
+
+### 2. Render — simplest, free, IaC blueprint
+Free web service, **reads `render.yaml`** (infra as code). One caveat: free
+instances spin down after ~15 min idle and cold-start in ~50s.
+
+1. Push to GitHub.
+2. Render → **New + → Blueprint** → pick the repo → it provisions from `render.yaml`.
+3. You get `https://llm-gateway-xxxx.onrender.com`.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
-## Option B — Hugging Face Spaces (best for AI/ML recruiters, free)
+### 3. Fly.io — most "infra cred", global, real health checks
+Generous free allowance, Docker-native, regions, and platform health checks that
+read the container `HEALTHCHECK`. `fly launch` (detects the `Dockerfile`) →
+`fly deploy`. Set `fly secrets set GATEWAY_AUTODEMO=1` if needed.
 
-A Docker Space is a great look for an AI infra demo. Create a **Docker** Space, then
-push these files to it. The Space's `README.md` must start with this front matter
-(prepend it, or keep a separate copy for the Space):
+### 4. Google Cloud Run — serverless containers, GCP signal
+Generous always-free tier. `gcloud run deploy --source .`. Caveat: scale-to-zero
+means in-memory metrics reset on cold start (the autodemo repopulates them); fine
+for a demo, and it shows you understand the statefulness tradeoff.
 
-```yaml
----
-title: Intelligent LLM Gateway
-emoji: 🚦
-colorFrom: red
-colorTo: indigo
-sdk: docker
-app_port: 8000
-pinned: true
----
-```
-
-HF builds the `Dockerfile` automatically and serves on the Space URL. Autodemo is
-already on, so it's alive immediately. (Add keys as **Space secrets** only if you
-truly want live calls — and rate-limit first.)
-
-## Option C — Railway / Fly.io
-
-- **Railway:** New Project → Deploy from GitHub repo. It detects the `Dockerfile`.
-  Set `GATEWAY_AUTODEMO=1` (already in the Dockerfile). Generate a domain.
-- **Fly.io:** `fly launch` (it reads the `Dockerfile`) → `fly deploy`. Set
-  `fly secrets set GATEWAY_AUTODEMO=1` if needed.
-
-## Option D — Local Docker (to test the exact image first)
-
-```bash
-docker build -t llm-gateway .
-docker run -p 8000:8000 llm-gateway          # simulated + autodemo
-# open http://localhost:8000
-```
-
-To run the image with live Groq locally (NOT for public hosting):
-
-```bash
-docker run -p 8000:8000 -e GROQ_API_KEY=gsk_xxx -e GATEWAY_AUTODEMO=0 llm-gateway
-```
+**Why not Vercel/Netlify?** They're serverless/edge — no persistent process, so the
+SSE stream and in-memory metrics don't fit. Knowing *why* is the MLOps point.
 
 ---
 
 ## First push (GitHub)
 
 ```bash
-git init && git add -A && git commit -m "Intelligent LLM Gateway"
-git branch -M main
-git remote add origin https://github.com/<you>/llm-gateway.git
-git push -u origin main
+git add -A && git commit -m "deploy artifacts"
+gh repo create llm-gateway --public --source=. --remote=origin --push   # gh CLI
+# or: git remote add origin https://github.com/<you>/llm-gateway.git && git push -u origin main
 ```
 
-`.env` is gitignored — confirm with `git status` that it is **not** staged before
-pushing.
+Confirm `.env` is **not** staged (`git status`) before pushing.
 
 ---
 
-## Notes for the demo URL
+## Local Docker (test the exact image first)
 
-- The headline numbers (savings %, hit-rate) come from the autodemo's
-  cache-friendly traffic. The README is explicit that real mixed traffic is more
-  like 20–45% hit-rate — leave that note in; reviewers trust calibrated claims.
-- The playground works on the hosted URL too: visitors can type prompts and watch
-  the pipeline. In simulated mode responses are templated but the *routing, caching,
-  security, cost, and latency logic is all real*.
+```bash
+make docker-build && make docker-run     # http://localhost:8000  (simulated + autodemo)
+curl localhost:8000/health && curl localhost:8000/metrics | head
+```

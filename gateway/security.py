@@ -36,8 +36,11 @@ _PII = [
 ]
 
 _SECRETS = [
-    ("api_key", re.compile(r"\bsk-[A-Za-z0-9]{16,}\b")),
-    ("api_key", re.compile(r"\b(?:api[_-]?key|secret)[\"'`:=\s]+[A-Za-z0-9_\-]{16,}\b", re.I)),
+    # provider key prefixes incl. modern hyphen/underscore formats:
+    # OpenAI sk-…/sk-proj-…, Anthropic sk-ant-…, Groq gsk_…, xAI xai-…
+    ("api_key", re.compile(r"\b(?:sk|gsk|xai|rk)[-_][A-Za-z0-9_-]{12,}", re.I)),
+    ("credential", re.compile(r"\bAIza[0-9A-Za-z_\-]{20,}\b")),          # Google API key
+    ("api_key", re.compile(r"\b(?:api[_-]?key|secret|token)[\"'`:=\s]+[A-Za-z0-9_\-]{16,}", re.I)),
     ("credential", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),                 # AWS access key
     ("secret", re.compile(r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----")),  # private key
     ("credential", re.compile(r"\bghp_[A-Za-z0-9]{36}\b")),              # GitHub token

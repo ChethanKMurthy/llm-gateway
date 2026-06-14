@@ -168,7 +168,57 @@ async def stream():
 
 @app.get("/health")
 async def health():
+    """Liveness probe (k8s/Render/Fly style)."""
     return {"status": "ok", "models": len(MODELS), "cache_entries": gw.cache.size}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness probe — the gateway is ready once the embedder/classifier are built."""
+    ok = gw.embedder is not None and bool(gw.classifier.centroids)
+    return {"ready": ok, "embedder": type(gw.embedder).__name__}
+
+
+@app.get("/metrics")
+async def metrics_prometheus():
+    """Prometheus exposition. Point a Prometheus/Grafana/OTel-collector scrape here.
+    This is the observability contract an SRE/MLOps team would wire into alerting."""
+    from fastapi.responses import PlainTextResponse
+    s = gw.metrics
+    lat = s.latency_percentiles()
+    lines: list[str] = []
+
+    def metric(name, value, help_, typ="gauge", labels=""):
+        if help_:
+            lines.append(f"# HELP {name} {help_}")
+            lines.append(f"# TYPE {name} {typ}")
+        lines.append(f"{name}{('{' + labels + '}') if labels else ''} {value}")
+
+    metric("gateway_requests_total", s.total, "Total requests processed", "counter")
+    metric("gateway_cache_hits_total", s.l1, "Cache hits by level", "counter", 'level="l1"')
+    lines.append(f'gateway_cache_hits_total{{level="l2"}} {s.l2}')
+    metric("gateway_model_calls_total", s.model_calls, "Requests served by a live/sim model", "counter")
+    metric("gateway_blocked_total", s.blocked, "Requests blocked by the security layer", "counter")
+    metric("gateway_errors_total", s.errors, "Requests that errored after fallback", "counter")
+    metric("gateway_fallbacks_total", s.fallbacks, "Provider fallbacks taken", "counter")
+    metric("gateway_cost_usd_total", round(s.cost_real, 6), "Actual spend (USD)", "counter")
+    metric("gateway_baseline_cost_usd_total", round(s.cost_baseline, 6), "Frontier-only baseline spend (USD)", "counter")
+    metric("gateway_saved_usd_total", round(s.saved, 6), "Cost saved vs baseline (USD)", "counter")
+    metric("gateway_tokens_total", s.tokens_in, "Tokens processed", "counter", 'direction="in"')
+    lines.append(f'gateway_tokens_total{{direction="out"}} {s.tokens_out}')
+    metric("gateway_cache_hit_ratio", round(s.hit_rate, 4), "Cache hit ratio [0,1]")
+    metric("gateway_savings_ratio", round(s.savings_pct / 100, 4), "Cost savings ratio [0,1]")
+    metric("gateway_latency_milliseconds", lat["p50"], "Request latency by quantile (ms)", "summary", 'quantile="0.5"')
+    lines.append(f'gateway_latency_milliseconds{{quantile="0.95"}} {lat["p95"]}')
+    lines.append(f'gateway_latency_milliseconds{{quantile="0.99"}} {lat["p99"]}')
+
+    health_ = gw.providers.breaker.health()
+    lines.append("# HELP gateway_provider_up Provider availability (1=up, 0=down)")
+    lines.append("# TYPE gateway_provider_up gauge")
+    for prov, h in health_.items():
+        lines.append(f'gateway_provider_up{{provider="{prov}"}} {1 if h["available"] else 0}')
+
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 
 # ---- static / SPA --------------------------------------------------------- #

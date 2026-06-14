@@ -3,189 +3,196 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Intelligent LLM Gateway — Control Plane</title>
-  <meta name="description" content="Multi-provider LLM gateway: semantic caching, dynamic routing, cost optimization, enterprise observability." />
-  <link rel="stylesheet" href="/static/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23d98264'/><rect x='34' y='34' width='32' height='32' rx='6' fill='%230a0b0d'/></svg>" />
+  <title>Gateway — an intelligent control plane for every LLM call</title>
+  <meta name="description" content="A multi-provider LLM gateway: semantic caching, dynamic model routing, cost & latency prediction, security guardrails, and a reinforcement-learning router. Watch a request flow through it." />
+  <link rel="preload" href="/static/fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+  <script>document.documentElement.classList.add("js");</script>
+  <link rel="stylesheet" href="/static/theme.css" />
+  <link rel="stylesheet" href="/static/landing.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%23262019'/><rect x='40' y='40' width='20' height='20' rx='5' fill='%23d98264'/></svg>" />
 </head>
 <body>
-  <!-- top bar -->
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo"></div>
-      <div>
-        <h1>Intelligent LLM Gateway</h1>
-        <div class="sub">semantic cache · dynamic routing · cost optimization · observability</div>
-      </div>
-    </div>
-    <div class="spacer"></div>
-    <div class="pill" id="pill-mode"><span class="dot"></span><span id="mode-text">simulated fleet</span></div>
-    <div class="pill" id="pill-embed"><span class="dot" style="background:var(--sky)"></span><span id="embed-text">embedder</span></div>
-    <div class="pill" id="pill-conn"><span class="dot"></span><span id="conn-text">connecting…</span></div>
+
+  <!-- ░░ nav ░░ -->
+  <header class="nav" id="nav">
+    <a href="/" class="brand"><span class="mark"></span> Gateway</a>
+    <nav class="nav-links">
+      <a href="#process">How it works</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="/about">About</a>
+      <a href="/console" class="btn btn-ink"><span class="lbl-full">Open console</span><span class="lbl-short">Console</span> <span class="arrow">→</span></a>
+    </nav>
   </header>
 
-  <main class="wrap">
+  <main>
 
-    <!-- KPI row -->
-    <section class="kpis" id="kpis">
-      <div class="kpi accent-mint">
-        <div class="label">Saved vs Baseline</div>
-        <div class="value" id="k-saved">$0.00</div>
-        <div class="delta good" id="k-saved-pct">— %</div>
+    <!-- ░░ hero ░░ -->
+    <section class="hero">
+      <div class="hero-grid container-wide">
+        <div class="hero-copy">
+          <span class="kicker">multi-provider LLM gateway</span>
+          <h1 class="hero-title">
+            Every model call,<br><span class="title-accent">routed with intent.</span>
+          </h1>
+          <p class="lead hero-lead">
+            One control plane between your app and every provider. It classifies the
+            prompt, checks two layers of cache, predicts the cost, picks the right
+            model, and learns from the result — before a single token is billed.
+          </p>
+          <div class="hero-cta">
+            <a href="/console" class="btn btn-primary btn-lg">Open the live console <span class="arrow">→</span></a>
+            <a href="#process" class="btn btn-ghost btn-lg">See how it works</a>
+          </div>
+          <dl class="hero-stats" id="hero-stats">
+            <div><dt id="hs-saved">—</dt><dd>cheaper than frontier-only</dd></div>
+            <div><dt id="hs-hit">—</dt><dd>served from cache</dd></div>
+            <div><dt id="hs-p50">—</dt><dd>cache-hit latency</dd></div>
+          </dl>
+        </div>
+
+        <div class="hero-stage" id="hero-stage">
+          <canvas id="hero-canvas" aria-hidden="true"></canvas>
+          <div class="hero-stage-caption mono">live · requests routing through the gateway</div>
+        </div>
       </div>
-      <div class="kpi accent-clay">
-        <div class="label">Real Spend</div>
-        <div class="value" id="k-spend">$0.00</div>
-        <div class="delta" id="k-baseline">baseline $0.00</div>
-      </div>
-      <div class="kpi accent-gold">
-        <div class="label">Cache Hit-Rate</div>
-        <div class="value" id="k-hitrate">0%</div>
-        <div class="delta" id="k-hits">L1 0 · L2 0</div>
-      </div>
-      <div class="kpi accent-sky">
-        <div class="label">Latency p95</div>
-        <div class="value" id="k-p95">0<span style="font-size:14px">ms</span></div>
-        <div class="delta" id="k-latency">p50 0 · p99 0</div>
-      </div>
-      <div class="kpi accent-violet">
-        <div class="label">Requests</div>
-        <div class="value" id="k-requests">0</div>
-        <div class="delta" id="k-rps">0 req/s</div>
-      </div>
-      <div class="kpi accent-clay">
-        <div class="label">Proj. Monthly</div>
-        <div class="value" id="k-monthly">$0</div>
-        <div class="delta" id="k-monthly-base">vs $0 baseline</div>
+      <div class="hero-providers container-wide">
+        <span class="mono provider-label">speaks every provider</span>
+        <ul class="provider-row" id="provider-row">
+          <li>Anthropic</li><li>OpenAI</li><li>Groq</li><li>Google</li><li>xAI</li><li>Ollama</li>
+        </ul>
       </div>
     </section>
 
-    <!-- playground + live feed -->
-    <div class="section-label">interactive playground &nbsp;·&nbsp; watch a request flow through the gateway</div>
-    <div class="grid-2-1">
-      <div class="card">
-        <div class="hd"><h3>Playground</h3><span class="tag">POST /v1/complete</span>
-          <div class="spacer" style="flex:1"></div>
-          <span class="tag" id="pg-hint">type a prompt, or pick an example ↓</span>
+    <!-- ░░ the problem ░░ -->
+    <section class="band band-alt" id="why">
+      <div class="container problem">
+        <div class="reveal">
+          <span class="kicker">the problem</span>
+          <h2>Sending every request to a frontier model is the<br>most expensive way to be approximately right.</h2>
         </div>
-        <div class="bd">
-          <div class="pg-input">
-            <textarea id="pg-prompt" placeholder="e.g. Write a Python function to debounce an async call…"></textarea>
-          </div>
-          <div class="pg-controls">
-            <button class="btn primary" id="pg-run">▶ Run through gateway</button>
-            <select class="ctl" id="pg-model">
-              <option value="">auto-route (recommended)</option>
-            </select>
-            <label class="toggle"><input type="checkbox" id="pg-cache" checked /> cache</label>
-            <label class="toggle"><input type="checkbox" id="pg-opt" checked /> optimize</label>
-          </div>
-          <div class="chips" id="pg-chips"></div>
-
-          <!-- pipeline -->
-          <div class="pipeline" id="pipeline"></div>
-
-          <!-- result -->
-          <div class="result" id="pg-result">
-            <div class="meta" id="pg-meta"></div>
-            <div class="text" id="pg-text"></div>
-          </div>
+        <div class="problem-cols">
+          <p class="reveal" data-d="1">
+            A translation, an FAQ lookup, and a hard reasoning task do not need the
+            same model — but most stacks send all three to the biggest one, pay the
+            top rate, and re-answer questions they already answered an hour ago.
+          </p>
+          <ul class="problem-list reveal" data-d="2">
+            <li><b>Duplicate &amp; near-duplicate</b> prompts re-billed in full.</li>
+            <li><b>Cheap tasks</b> charged at frontier prices.</li>
+            <li><b>One provider down</b> takes the whole feature with it.</li>
+            <li><b>No idea</b> what any of it costs until the invoice.</li>
+          </ul>
         </div>
       </div>
+    </section>
 
-      <div class="card">
-        <div class="hd"><h3>Live Request Feed</h3><span class="tag">SSE /api/stream</span></div>
-        <div class="feed" id="feed"></div>
-      </div>
-    </div>
+    <!-- ░░ THE PROCESS — animated pipeline (the centerpiece) ░░ -->
+    <section class="band band-deep process" id="process">
+      <div class="container-wide">
+        <div class="process-head reveal">
+          <span class="kicker">how it works</span>
+          <h2>One request. Nine decisions.<br>Watch it move.</h2>
+          <p class="lead">Every call runs the same pipeline. A hit at the cache returns in
+            about a millisecond; a miss is routed, priced, and learned from. Hover a
+            stage — or just watch the packet travel.</p>
+        </div>
 
-    <!-- charts -->
-    <div class="section-label">real-time analytics</div>
-    <div class="grid-3">
-      <div class="card">
-        <div class="hd"><h3>Spend vs Baseline</h3><span class="tag">USD / sec</span></div>
-        <div class="bd">
-          <canvas id="chart-cost" height="150"></canvas>
-          <div class="legend">
-            <span><i style="background:var(--clay)"></i> gateway spend</span>
-            <span><i style="background:var(--ink-3)"></i> baseline (frontier-only)</span>
-            <span><i style="background:var(--mint)"></i> saved</span>
-          </div>
+        <div class="pipeline" id="pipeline" role="list">
+          <!-- stages injected by landing.js, but rendered server-clean as fallback -->
+        </div>
+
+        <div class="process-foot reveal">
+          <a href="/console" class="btn btn-primary">Run your own prompt through it <span class="arrow">→</span></a>
         </div>
       </div>
-      <div class="card">
-        <div class="hd"><h3>Where Requests Are Served</h3><span class="tag">composition</span></div>
-        <div class="bd">
-          <canvas id="chart-cache" height="150"></canvas>
-          <div class="legend">
-            <span><i style="background:var(--gold)"></i> L1 exact</span>
-            <span><i style="background:var(--violet)"></i> L2 semantic</span>
-            <span><i style="background:var(--sky)"></i> model call</span>
-            <span><i style="background:var(--rose)"></i> blocked</span>
-          </div>
+    </section>
+
+    <!-- ░░ routing intelligence ░░ -->
+    <section class="band routing" id="routing">
+      <div class="container routing-grid">
+        <div class="routing-copy reveal">
+          <span class="kicker">routing intelligence</span>
+          <h2>It learns which model is actually best — per kind of work.</h2>
+          <p class="lead">The router is a Thompson-sampling contextual bandit. Each intent is a
+            context; each candidate model is an arm; the reward blends quality, cost
+            and latency. It starts from informed priors and sharpens toward whatever
+            performs on <em>your</em> traffic.</p>
+          <a href="/about#engineering" class="link-arrow">How the router works <span class="arrow">→</span></a>
+        </div>
+        <div class="routing-viz reveal" data-d="1" id="routing-viz">
+          <!-- intent → model rows injected by JS -->
         </div>
       </div>
-      <div class="card">
-        <div class="hd"><h3>Latency Distribution</h3><span class="tag">p50 / p95 / p99</span></div>
-        <div class="bd">
-          <canvas id="chart-latency" height="150"></canvas>
-          <div class="legend"><span class="muted" id="lat-note">cache hits return in ~1ms; model calls dominate the tail</span></div>
+    </section>
+
+    <!-- ░░ capabilities — field-manual index, NOT a card grid ░░ -->
+    <section class="band band-alt capabilities" id="capabilities">
+      <div class="container">
+        <div class="cap-head reveal">
+          <span class="kicker">capabilities</span>
+          <h2>A gateway, not a cache.</h2>
+          <p class="lead">Fifteen subsystems from the spec, each a real, inspectable component.</p>
+        </div>
+        <ol class="cap-index" id="cap-index"></ol>
+      </div>
+    </section>
+
+    <!-- ░░ proof / it's running ░░ -->
+    <section class="band proof" id="proof">
+      <div class="container-wide proof-grid">
+        <div class="proof-copy reveal">
+          <span class="kicker">not a mockup</span>
+          <h2>It's running right now.</h2>
+          <p class="lead">The console is the real control plane — live metrics over server-sent
+            events, the learned routing policy, provider health, and a playground that
+            sends your prompt through all nine stages.</p>
+          <ul class="proof-points">
+            <li><span class="dot dot-green"></span> Real algorithms: embeddings, semantic search, the bandit, circuit breaker.</li>
+            <li><span class="dot dot-blue"></span> Live or simulated providers — Groq calls are real when a key is set.</li>
+            <li><span class="dot dot-amber"></span> Honest numbers: demo traffic is cache-friendly; real mixed traffic is 20–45%.</li>
+          </ul>
+          <a href="/console" class="btn btn-primary btn-lg">Open the live console <span class="arrow">→</span></a>
+        </div>
+        <a href="/console" class="proof-shot reveal" data-d="1" id="proof-shot" aria-label="Open the live console">
+          <img src="/static/media/console.png" alt="The live gateway console: spend vs baseline, cache hit-rate, latency percentiles, and the learned routing policy." loading="lazy" />
+          <span class="proof-shot-badge mono">live console →</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- ░░ closing CTA ░░ -->
+    <section class="band band-deep closing">
+      <div class="container closing-inner reveal">
+        <h2>See a prompt get cheaper, faster, and safer<br>in about a millisecond.</h2>
+        <div class="hero-cta" style="justify-content:center">
+          <a href="/console" class="btn btn-primary btn-lg">Open the console <span class="arrow">→</span></a>
+          <a href="/about" class="btn btn-ghost btn-lg">Read the story</a>
         </div>
       </div>
-    </div>
-
-    <!-- router + providers -->
-    <div class="section-label">routing intelligence &amp; reliability</div>
-    <div class="grid-2">
-      <div class="card">
-        <div class="hd"><h3>RL Router — Learned Policy</h3><span class="tag">Thompson-sampling bandit</span>
-          <div class="spacer" style="flex:1"></div><span class="tag" id="router-stats">—</span>
-        </div>
-        <div class="bd"><div class="policy" id="policy"></div></div>
-      </div>
-      <div class="card">
-        <div class="hd"><h3>Provider Health</h3><span class="tag">circuit breaker · click to fail a provider</span></div>
-        <div class="bd"><div class="providers" id="providers"></div></div>
-      </div>
-    </div>
-
-    <!-- breakdowns -->
-    <div class="section-label">cost attribution</div>
-    <div class="grid-3">
-      <div class="card">
-        <div class="hd"><h3>Spend by Model</h3><span class="tag">USD</span></div>
-        <div class="bd"><div class="bars" id="by-model"></div></div>
-      </div>
-      <div class="card">
-        <div class="hd"><h3>Requests by Intent</h3><span class="tag">classifier</span></div>
-        <div class="bd"><div class="bars" id="by-intent"></div></div>
-      </div>
-      <div class="card">
-        <div class="hd"><h3>Savings by Team</h3><span class="tag">showback</span></div>
-        <div class="bd"><div class="bars" id="by-team"></div></div>
-      </div>
-    </div>
-
-    <!-- catalog -->
-    <div class="section-label">model catalog &amp; pricing</div>
-    <div class="card">
-      <div class="bd" style="padding:0">
-        <table class="cat" id="catalog">
-          <thead><tr>
-            <th>Model</th><th>Provider</th><th>Tier</th>
-            <th>$/1M in</th><th>$/1M out</th><th>Quality prior</th><th>Strong at</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="foot">
-      Built from the PRD/TRD · <span class="mono">FastAPI + numpy</span> backend · zero-dependency dashboard ·
-      <a href="/docs">API docs</a> · <span id="foot-mode"></span>
-    </div>
+    </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <!-- ░░ footer ░░ -->
+  <footer class="footer">
+    <div class="container-wide footer-grid">
+      <div>
+        <a href="/" class="brand" style="color:var(--on-deep)"><span class="mark"></span> Gateway</a>
+        <p class="footer-tag">An intelligent multi-provider LLM gateway. Built from a PRD/TRD as a complete, running product.</p>
+      </div>
+      <nav class="footer-links">
+        <a href="#process">How it works</a>
+        <a href="#capabilities">Capabilities</a>
+        <a href="/about">About</a>
+        <a href="/console">Console</a>
+        <a href="/docs">API</a>
+      </nav>
+    </div>
+    <div class="container-wide footer-base mono">
+      <span>FastAPI · numpy · zero-dependency frontend</span>
+      <span id="footer-mode">simulated fleet</span>
+    </div>
+  </footer>
+
+  <script src="/static/landing.js"></script>
 </body>
 </html>

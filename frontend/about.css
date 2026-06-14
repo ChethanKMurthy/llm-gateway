@@ -1,0 +1,42 @@
+/* About — prose-forward marketing page */
+
+.about-hero { padding-top: clamp(3rem, 7vw, 6rem); }
+.about-hero h1 { font-size: var(--fs-display); letter-spacing: -0.035em; margin-top: 1.2rem; max-width: 16ch; }
+.about-lead { margin-top: 1.6rem; max-width: 52ch; }
+
+.prose { max-width: 64ch; }
+.prose p { font-size: var(--fs-lead); color: var(--ink-2); line-height: 1.62; }
+.prose p + p { margin-top: 1.4rem; }
+.prose strong { color: var(--ink); font-weight: 600; }
+
+.eng-head { max-width: 40ch; margin-bottom: clamp(2rem, 4vw, 3rem); }
+.eng-head h2 { margin-top: 1rem; }
+.eng-list { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem) clamp(2rem, 5vw, 4rem); }
+.eng-item h3 { font-size: 1.2rem; padding-bottom: 0.7rem; margin-bottom: 0.7rem;
+  border-bottom: 1px solid var(--line-2); }
+.eng-item p { color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.6; }
+@media (max-width: 720px) { .eng-list { grid-template-columns: 1fr; } }
+
+/* honesty — a full panel, not a side-stripe */
+.honesty { display: grid; grid-template-columns: auto 1fr; gap: clamp(1.5rem, 4vw, 3.5rem);
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-lg);
+  padding: clamp(1.6rem, 4vw, 3rem); box-shadow: var(--shadow); align-items: start; }
+.honesty-mark { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.72rem;
+  letter-spacing: 0.2em; text-transform: uppercase; color: var(--clay-ink);
+  border-right: 2px solid var(--clay); padding-right: 0.8rem; }
+.honesty-body h2 { margin-bottom: 1rem; }
+.honesty-body p { color: var(--ink-2); font-size: var(--fs-body); line-height: 1.6; max-width: 62ch; }
+.honesty-body p + p { margin-top: 1rem; }
+.honesty-body strong { color: var(--ink); font-weight: 600; }
+@media (max-width: 640px) {
+  .honesty { grid-template-columns: 1fr; }
+  .honesty-mark { writing-mode: horizontal-tb; transform: none; border-right: none;
+    border-bottom: 2px solid var(--clay); padding: 0 0 0.6rem; }
+}
+
+/* colophon */
+.colophon h3 { font-size: 1.1rem; margin-bottom: 1.4rem; }
+.colo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem 2rem; }
+.colo-grid div { border-top: 1px solid var(--line); padding-top: 0.8rem; }
+.colo-grid dt { font-family: var(--mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.colo-grid dd { font-size: var(--fs-sm); color: var(--ink); margin-top: 0.35rem; }

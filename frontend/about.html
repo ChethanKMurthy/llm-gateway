@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About — Gateway</title>
+  <meta name="description" content="How a one-page PRD/TRD became a complete, running multi-provider LLM gateway — and what's real versus simulated." />
+  <script>document.documentElement.classList.add("js");</script>
+  <link rel="preload" href="/static/fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/static/theme.css" />
+  <link rel="stylesheet" href="/static/landing.css" />
+  <link rel="stylesheet" href="/static/about.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%23262019'/><rect x='40' y='40' width='20' height='20' rx='5' fill='%23d98264'/></svg>" />
+</head>
+<body>
+
+  <header class="nav" id="nav">
+    <a href="/" class="brand"><span class="mark"></span> Gateway</a>
+    <nav class="nav-links">
+      <a href="/#process">How it works</a>
+      <a href="/#capabilities">Capabilities</a>
+      <a href="/about" style="color:var(--ink)">About</a>
+      <a href="/console" class="btn btn-ink"><span class="lbl-full">Open console</span><span class="lbl-short">Console</span> <span class="arrow">→</span></a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- hero -->
+    <section class="band about-hero">
+      <div class="container reveal">
+        <span class="kicker">about the project</span>
+        <h1>From a one-page spec<br>to a gateway that runs.</h1>
+        <p class="lead about-lead">The brief was a "semantic cache." The interesting version is the
+          whole control plane around it — so that's what got built: a complete,
+          running, multi-provider LLM gateway, and the live console you can open
+          right now.</p>
+      </div>
+    </section>
+
+    <!-- the story -->
+    <section class="band-tight">
+      <div class="container prose reveal">
+        <p>The spec — a PRD/TRD — sketched fifteen features: dynamic routing, a
+          multi-level cache, a prompt classifier, cost and latency prediction,
+          guardrails, smart fallback, quality scoring, and a reinforcement-learning
+          router. Most portfolio projects would implement the cache and call it a
+          day. The premise here was different: <strong>build the entire thing, make it
+          real, and make it inspectable.</strong></p>
+        <p>The result is one nine-stage pipeline that every request flows through.
+          A hit at the cache returns in about a millisecond. A miss gets classified,
+          priced, routed to the model that's actually best for that kind of work,
+          called with a health-aware fallback chain, scored, and learned from — and
+          every one of those decisions is visible in the console's trace.</p>
+      </div>
+    </section>
+
+    <!-- engineering -->
+    <section class="band band-alt" id="engineering">
+      <div class="container">
+        <div class="reveal eng-head">
+          <span class="kicker">under the hood</span>
+          <h2>The parts that matter.</h2>
+        </div>
+        <div class="eng-list">
+          <article class="eng-item reveal" data-d="1">
+            <h3>A bandit, not a guess</h3>
+            <p>The router is a Thompson-sampling contextual bandit. Intent is the
+              context; candidate models are arms; reward blends quality, cost and
+              latency. It needs no training set — it starts from informed priors and
+              sharpens online toward whatever performs on real traffic.</p>
+          </article>
+          <article class="eng-item reveal" data-d="2">
+            <h3>Two layers of cache</h3>
+            <p>L1 is an exact hash. L2 is embedding cosine over a single numpy matrix —
+              one vectorized dot product per lookup, no vector DB needed. Thresholds
+              are per-intent and self-tune: a low-quality hit makes that intent
+              stricter.</p>
+          </article>
+          <article class="eng-item reveal" data-d="3">
+            <h3>Guardrails before the wire</h3>
+            <p>Every prompt is scanned before it leaves the building: injection and
+              jailbreak scoring, PII redaction, and a hard block on leaked secrets and
+              API keys. A careless prompt can't exfiltrate a credential to a third
+              party.</p>
+          </article>
+          <article class="eng-item reveal" data-d="4">
+            <h3>Observability, not vibes</h3>
+            <p>Span-shaped events stream to the console over server-sent events:
+              spend versus a frontier-only baseline, cache composition, latency
+              percentiles, the learned policy, and provider health — all live.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- honesty -->
+    <section class="band">
+      <div class="container">
+        <div class="honesty reveal">
+          <div class="honesty-mark mono">real / simulated</div>
+          <div class="honesty-body">
+            <h2>What's real, stated plainly.</h2>
+            <p>This audience can smell a faked demo, so here's the line. The
+              <strong>algorithms are real and run on every request</strong>: the embeddings and
+              semantic search, the classifier, the cache and its adaptive thresholds,
+              the bandit, the circuit breaker, the cost math against a real 2026 price
+              table, the guardrails.</p>
+            <p>The <strong>LLM responses are simulated by default</strong> — a faithful
+              simulator with realistic latency, token counts, and failures — so the
+              whole system runs offline with no keys. Add a provider key and that
+              provider goes live; Groq calls, for instance, are real when a key is set.
+              And the headline numbers come from intentionally cache-friendly demo
+              traffic; real mixed traffic lands closer to a 20–45% hit-rate. The site
+              says so on purpose.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- colophon -->
+    <section class="band band-tight">
+      <div class="container colophon reveal">
+        <h3>Colophon</h3>
+        <dl class="colo-grid">
+          <div><dt>Backend</dt><dd>Python · FastAPI · numpy · httpx</dd></div>
+          <div><dt>Frontend</dt><dd>Zero-dependency · hand-rolled canvas</dd></div>
+          <div><dt>Type</dt><dd>Bricolage Grotesque · JetBrains Mono</dd></div>
+          <div><dt>Providers</dt><dd>Anthropic · OpenAI · Groq · Google · xAI · Ollama</dd></div>
+          <div><dt>Deploy</dt><dd>One container · Render / HF Spaces / Fly</dd></div>
+          <div><dt>License</dt><dd>Built from a PRD/TRD, end to end</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="band band-deep closing">
+      <div class="container closing-inner reveal">
+        <h2>The fastest way to understand it<br>is to watch one request.</h2>
+        <div class="hero-cta" style="justify-content:center">
+          <a href="/console" class="btn btn-primary btn-lg">Open the console <span class="arrow">→</span></a>
+          <a href="/" class="btn btn-ghost btn-lg">Back to the start</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container-wide footer-grid">
+      <div>
+        <a href="/" class="brand" style="color:var(--on-deep)"><span class="mark"></span> Gateway</a>
+        <p class="footer-tag">An intelligent multi-provider LLM gateway. Built from a PRD/TRD as a complete, running product.</p>
+      </div>
+      <nav class="footer-links">
+        <a href="/#process">How it works</a>
+        <a href="/#capabilities">Capabilities</a>
+        <a href="/about">About</a>
+        <a href="/console">Console</a>
+        <a href="/docs">API</a>
+      </nav>
+    </div>
+    <div class="container-wide footer-base mono">
+      <span>FastAPI · numpy · zero-dependency frontend</span>
+      <span>built end to end</span>
+    </div>
+  </footer>
+
+  <script>
+    // minimal: nav shadow + reveals (no canvas on this page)
+    const nav = document.getElementById("nav");
+    addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.14 });
+    const inView = (el) => { const r = el.getBoundingClientRect(); return r.top < innerHeight * 0.96 && r.bottom > 0; };
+    document.querySelectorAll(".reveal").forEach((el) => { if (inView(el)) el.classList.add("in"); else io.observe(el); });
+    setTimeout(() => document.querySelectorAll(".reveal:not(.in)").forEach((el) => { const r = el.getBoundingClientRect(); if (r.top < innerHeight) el.classList.add("in"); }), 1600);
+  </script>
+</body>
+</html>

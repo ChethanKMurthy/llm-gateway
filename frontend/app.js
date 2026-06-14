@@ -215,12 +215,12 @@ function drawCostChart(series) {
   const X = (i) => pad.l + (i / (pts.length - 1)) * (w - pad.l - pad.r);
   const Y = (v) => h - pad.b - (v / max) * (h - pad.t - pad.b);
 
-  // baseline area (grey) = full height of what you'd have paid
-  area(ctx, pts.map((p, i) => [X(i), Y(p.cost + p.saved)]), w, h, pad.b, "rgba(107,114,128,0.18)");
-  // real spend area (clay) = what you actually paid (bottom band)
-  area(ctx, pts.map((p, i) => [X(i), Y(p.cost)]), w, h, pad.b, "rgba(217,130,100,0.28)", css("--clay"));
-  // baseline line on top
-  line(ctx, pts.map((p, i) => [X(i), Y(p.cost + p.saved)]), css("--ink-3"), 1, [3, 3]);
+  // upper band (baseline minus actual) reads as SAVED — soft green
+  area(ctx, pts.map((p, i) => [X(i), Y(p.cost + p.saved)]), w, h, pad.b, "oklch(0.64 0.12 162 / 0.16)");
+  // actual gateway spend (bottom band) — clay
+  area(ctx, pts.map((p, i) => [X(i), Y(p.cost)]), w, h, pad.b, "oklch(0.665 0.145 42 / 0.30)", css("--clay"));
+  // baseline ceiling
+  line(ctx, pts.map((p, i) => [X(i), Y(p.cost + p.saved)]), css("--ink-3"), 1.2, [4, 3]);
 }
 
 function area(ctx, pts, w, h, baseB, fill, stroke) {

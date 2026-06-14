@@ -176,9 +176,23 @@ if os.path.isdir(_FRONTEND):
     app.mount("/static", StaticFiles(directory=_FRONTEND), name="static")
 
 
+def _page(name: str):
+    path = os.path.join(_FRONTEND, name)
+    if os.path.exists(path):
+        return FileResponse(path)
+    return {"message": "Intelligent LLM Gateway API.", "docs": "/docs", "missing": name}
+
+
 @app.get("/")
 async def index():
-    idx = os.path.join(_FRONTEND, "index.html")
-    if os.path.exists(idx):
-        return FileResponse(idx)
-    return {"message": "Intelligent LLM Gateway API. Frontend not found.", "docs": "/docs"}
+    return _page("index.html")
+
+
+@app.get("/about")
+async def about():
+    return _page("about.html")
+
+
+@app.get("/console")
+async def console():
+    return _page("console.html")

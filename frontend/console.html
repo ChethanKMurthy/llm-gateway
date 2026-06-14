@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Console — Gateway</title>
+  <meta name="description" content="The live gateway control plane: spend, savings, cache, latency, learned routing, provider health, and an interactive playground." />
+  <link rel="stylesheet" href="/static/theme.css" />
+  <link rel="stylesheet" href="/static/console.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%23262019'/><rect x='40' y='40' width='20' height='20' rx='5' fill='%23d98264'/></svg>" />
+</head>
+<body class="console">
+
+  <header class="c-nav">
+    <a href="/" class="brand"><span class="mark"></span> Gateway</a>
+    <span class="c-breadcrumb mono">/ console</span>
+    <div class="c-nav-right">
+      <span class="pill" id="pill-mode"><span class="dot"></span><span id="mode-text">simulated fleet</span></span>
+      <span class="pill" id="pill-embed"><span class="dot" style="background:var(--blue)"></span><span id="embed-text">embedder</span></span>
+      <span class="pill" id="pill-conn"><span class="dot"></span><span id="conn-text">connecting…</span></span>
+      <a href="/" class="btn btn-ghost btn-sm">← Site</a>
+    </div>
+  </header>
+
+  <main class="c-wrap">
+
+    <!-- KPIs -->
+    <section class="kpis">
+      <div class="kpi accent-green">
+        <div class="label">Saved vs baseline</div>
+        <div class="value" id="k-saved">$0.00</div>
+        <div class="delta good" id="k-saved-pct">— %</div>
+      </div>
+      <div class="kpi accent-clay">
+        <div class="label">Real spend</div>
+        <div class="value" id="k-spend">$0.00</div>
+        <div class="delta" id="k-baseline">baseline $0.00</div>
+      </div>
+      <div class="kpi accent-amber">
+        <div class="label">Cache hit-rate</div>
+        <div class="value" id="k-hitrate">0%</div>
+        <div class="delta" id="k-hits">L1 0 · L2 0</div>
+      </div>
+      <div class="kpi accent-blue">
+        <div class="label">Latency p95</div>
+        <div class="value" id="k-p95">0<span class="unit">ms</span></div>
+        <div class="delta" id="k-latency">p50 0 · p99 0</div>
+      </div>
+      <div class="kpi accent-violet">
+        <div class="label">Requests</div>
+        <div class="value" id="k-requests">0</div>
+        <div class="delta" id="k-rps">0 req/s</div>
+      </div>
+      <div class="kpi accent-clay">
+        <div class="label">Projected monthly</div>
+        <div class="value" id="k-monthly">$0</div>
+        <div class="delta" id="k-monthly-base">vs $0 baseline</div>
+      </div>
+    </section>
+
+    <h2 class="c-section">Playground <span class="c-section-sub">— run a prompt through all nine stages</span></h2>
+    <div class="grid-2-1">
+      <div class="card">
+        <div class="hd"><h3>Playground</h3><span class="tag">POST /v1/complete</span>
+          <span class="hd-spacer"></span><span class="tag muted" id="pg-hint">type a prompt, or pick an example</span>
+        </div>
+        <div class="bd">
+          <div class="pg-input"><textarea id="pg-prompt" placeholder="e.g. Write a Python function to debounce an async call…"></textarea></div>
+          <div class="pg-controls">
+            <button class="btn btn-primary" id="pg-run">▶ Run through gateway</button>
+            <select class="ctl" id="pg-model"><option value="">auto-route (recommended)</option></select>
+            <label class="toggle"><input type="checkbox" id="pg-cache" checked /> cache</label>
+            <label class="toggle"><input type="checkbox" id="pg-opt" checked /> optimize</label>
+          </div>
+          <div class="chips" id="pg-chips"></div>
+          <div class="pipeline" id="pipeline"></div>
+          <div class="result" id="pg-result"><div class="meta" id="pg-meta"></div><div class="text" id="pg-text"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Live request feed</h3><span class="tag">SSE /api/stream</span></div>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
+
+    <h2 class="c-section">Analytics <span class="c-section-sub">— real-time</span></h2>
+    <div class="grid-3">
+      <div class="card">
+        <div class="hd"><h3>Spend vs baseline</h3><span class="tag">USD / sec</span></div>
+        <div class="bd"><canvas id="chart-cost" height="150"></canvas>
+          <div class="legend"><span><i style="background:var(--clay)"></i> gateway spend</span><span><i style="background:var(--ink-3)"></i> baseline</span><span><i style="background:var(--green)"></i> saved</span></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Where requests are served</h3><span class="tag">composition</span></div>
+        <div class="bd"><canvas id="chart-cache" height="150"></canvas>
+          <div class="legend"><span><i style="background:var(--amber)"></i> L1 exact</span><span><i style="background:var(--violet)"></i> L2 semantic</span><span><i style="background:var(--blue)"></i> model</span><span><i style="background:var(--red)"></i> blocked</span></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Latency distribution</h3><span class="tag">p50 / p95 / p99</span></div>
+        <div class="bd"><canvas id="chart-latency" height="150"></canvas>
+          <div class="legend"><span class="muted" id="lat-note">cache hits return in ~1ms; model calls own the tail</span></div></div>
+      </div>
+    </div>
+
+    <h2 class="c-section">Routing &amp; reliability</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="hd"><h3>RL router — learned policy</h3><span class="tag">Thompson bandit</span><span class="hd-spacer"></span><span class="tag muted" id="router-stats">—</span></div>
+        <div class="bd"><div class="policy" id="policy"></div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Provider health</h3><span class="tag">circuit breaker · click to fail one</span></div>
+        <div class="bd"><div class="providers" id="providers"></div></div>
+      </div>
+    </div>
+
+    <h2 class="c-section">Cost attribution</h2>
+    <div class="grid-3">
+      <div class="card"><div class="hd"><h3>Spend by model</h3><span class="tag">USD</span></div><div class="bd"><div class="bars" id="by-model"></div></div></div>
+      <div class="card"><div class="hd"><h3>Requests by intent</h3><span class="tag">classifier</span></div><div class="bd"><div class="bars" id="by-intent"></div></div></div>
+      <div class="card"><div class="hd"><h3>Savings by team</h3><span class="tag">showback</span></div><div class="bd"><div class="bars" id="by-team"></div></div></div>
+    </div>
+
+    <h2 class="c-section">Model catalog &amp; pricing</h2>
+    <div class="card">
+      <div class="bd nopad">
+        <table class="cat" id="catalog">
+          <thead><tr><th>Model</th><th>Provider</th><th>Tier</th><th>$/1M in</th><th>$/1M out</th><th>Quality</th><th>Strong at</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="c-foot mono">
+      <a href="/">← back to site</a> · <a href="/about">about</a> · <a href="/docs">API</a> · <span id="foot-mode"></span>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
